@@ -131,8 +131,29 @@ T["a paste end marker inside a comment is removed"] = function()
   nudge.send()
   local text = sent_text()
   local inner = text:sub(#herdr.PASTE_START + 1, -#herdr.PASTE_END - 1)
-  h.eq(nil, inner:find("\27[201~", 1, true))
-  h.truthy(inner:find("badrest", 1, true))
+  h.eq(nil, inner:find("\27", 1, true))
+  h.truthy(inner:find("bad[201~rest", 1, true))
+end
+
+T["a nested paste end marker in the code does not survive"] = function()
+  vim.env.HERDR_PANE_ID = "w:nvim"
+  h.fake_herdr({ pane("w:nvim", "t1"), pane("w:claude", "t1", "claude", "/") })
+  h.file("a.lua", { "x\27[20\27[201~1~\3rm -rf ~\r" })
+  nudge.add({ line1 = 1, line2 = 1, text = "look" })
+  nudge.send()
+  local text = sent_text()
+  local inner = text:sub(#herdr.PASTE_START + 1, -#herdr.PASTE_END - 1)
+  h.eq(nil, inner:find("[%z\1-\8\11-\31\127]"))
+  h.truthy(inner:find("x[20[201~1~rm -rf ~", 1, true))
+end
+
+T["tabs and newlines are kept"] = function()
+  vim.env.HERDR_PANE_ID = "w:nvim"
+  h.fake_herdr({ pane("w:nvim", "t1"), pane("w:claude", "t1", "claude", "/") })
+  h.file("a.lua", { "\tindented", "next" })
+  nudge.add({ line1 = 1, line2 = 2, text = "x" })
+  nudge.send()
+  h.truthy(sent_text():find("\tindented\nnext", 1, true))
 end
 
 T["unsaved buffers are warned about"] = function()

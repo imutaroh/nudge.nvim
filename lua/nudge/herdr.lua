@@ -122,8 +122,10 @@ end
 ---@return boolean ok
 ---@return string|nil err
 function M.paste(pane_id, text, submit)
-  -- A stray end marker inside the text would end the paste early and submit the rest line by line.
-  text = text:gsub("\27%[201~", "")
+  -- A stray end marker inside the text would end the paste early and submit the rest line by line. Removing
+  -- the marker string is not enough (ESC[20 ESC[201~ 1~ becomes a marker again), so drop ESC and every
+  -- other control character except tab and newline.
+  text = text:gsub("[%z\1-\8\11-\31\127]", "")
   local res = M.run({ "herdr", "pane", "send-text", pane_id, M.PASTE_START .. text .. M.PASTE_END })
   if res.code ~= 0 then
     return false, "herdr pane send-text failed: " .. vim.trim(res.stderr ~= "" and res.stderr or res.stdout)
