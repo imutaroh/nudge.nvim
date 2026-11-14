@@ -78,7 +78,7 @@ T["outside herdr, send warns and sends nothing"] = function()
   nudge.add({ line1 = 1, line2 = 1, text = "x" })
   nudge.send()
   h.eq(0, #h.calls())
-  h.truthy(h.notifications()[1].msg:find("HERDR_PANE_ID", 1, true))
+  h.truthy(h.notifications()[1].msg:find("not running inside herdr", 1, true))
   h.eq(1, #store.all())
 end
 
@@ -167,6 +167,109 @@ T["unsaved buffers are warned about"] = function()
     return n.level == vim.log.levels.WARN and n.msg:find("unsaved", 1, true)
   end, h.notifications())
   h.eq(1, #warned)
+end
+
+-- Herdr desktop app: Neovim is started with $HC_TERMINAL_ID, and `hc send` delivers the text.
+
+local function term(address, app, cwd)
+  return { terminal = address, app = app, cwd = cwd, title = "title " .. address }
+end
+
+T["app: send goes to the only claude terminal of this tab through hc send"] = function()
+  local _, path = h.file("a.lua", { "local x = 1", "return x" })
+  local dir = vim.fs.dirname(path)
+  vim.env.HC_TERMINAL_ID = "t1"
+  h.fake_hc({
+    tb1 = { term("t1"), term("t2", "claude-code", dir), term("t3") },
+    tb2 = { term("t4", "claude-code", dir) },
+  })
+  nudge.add({ line1 = 2, line2 = 2, text = "inline this" })
+  nudge.send()
+
+  local sends = h.hc_sends()
+  h.eq(1, #sends)
+  h.eq("t2", sends[1].terminal)
+  h.truthy(sends[1].text:find("## 1. a.lua:2\n```lua\nreturn x\n```\ninline this", 1, true), sends[1].text)
+  h.eq(nil, sends[1].text:find("\27", 1, true), "hc send pastes by itself: no bracketed paste markers")
+  h.eq({ "env", "-u", "HC_TERMINAL_ID", "hc", "send", "--" }, vim.list_slice(sends[1].args, 1, 6))
+  h.eq(0, #store.all(), "cleared after sending")
+  h.truthy(h.notifications()[1].msg:find("title t2", 1, true))
+end
+
+T["app: $HC_TERMINAL_ID wins over $HERDR_PANE_ID"] = function()
+  vim.env.HC_TERMINAL_ID = "t1"
+  vim.env.HERDR_PANE_ID = "w:nvim"
+  h.fake_hc({ tb1 = { term("t1"), term("t2", "claude-code", "/") } })
+  h.file("a.lua", { "a" })
+  nudge.add({ line1 = 1, line2 = 1, text = "x" })
+  nudge.send()
+  h.eq(1, #h.hc_sends())
+end
+
+T["app: other agents are not matched by the claude prefix"] = function()
+  vim.env.HC_TERMINAL_ID = "t1"
+  h.fake_hc({ tb1 = { term("t1"), term("t2", "codex", "/"), term("t3", "claudette", "/") } })
+  h.file("a.lua", { "a" })
+  nudge.add({ line1 = 1, line2 = 1, text = "x" })
+  nudge.send()
+  h.eq(0, #h.hc_sends())
+  h.truthy(h.notifications()[1].msg:find("no claude pane", 1, true))
+end
+
+T["app: a terminal that is not shown in a tab is reported"] = function()
+  vim.env.HC_TERMINAL_ID = "t9"
+  h.fake_hc({ tb1 = { term("t1"), term("t2", "claude-code", "/") } })
+  h.file("a.lua", { "a" })
+  nudge.add({ line1 = 1, line2 = 1, text = "x" })
+  nudge.send()
+  h.eq(0, #h.hc_sends())
+  h.truthy(h.notifications()[1].msg:find("t9", 1, true))
+end
+
+T["app: a blocked agent keeps the comments and says why"] = function()
+  vim.env.HC_TERMINAL_ID = "t1"
+  h.fake_hc({ tb1 = { term("t1"), term("t2", "claude-code", "/") } }, { send_code = 9 })
+  h.file("a.lua", { "a" })
+  nudge.add({ line1 = 1, line2 = 1, text = "x" })
+  nudge.send()
+  h.eq(1, #store.all())
+  h.eq(vim.log.levels.ERROR, h.notifications()[1].level)
+  h.truthy(h.notifications()[1].msg:find("permission prompt", 1, true))
+end
+
+T["app: a failed send keeps the comments"] = function()
+  vim.env.HC_TERMINAL_ID = "t1"
+  h.fake_hc({ tb1 = { term("t1"), term("t2", "claude-code", "/") } }, { send_code = 3 })
+  h.file("a.lua", { "a" })
+  nudge.add({ line1 = 1, line2 = 1, text = "x" })
+  nudge.send()
+  h.eq(1, #store.all())
+  h.truthy(h.notifications()[1].msg:find("send broke", 1, true))
+end
+
+T["app: comments stay until hc send returns, and a second send waits"] = function()
+  vim.env.HC_TERMINAL_ID = "t1"
+  h.fake_hc({ tb1 = { term("t1"), term("t2", "claude-code", "/") } }, { hold = true })
+  h.file("a.lua", { "a" })
+  nudge.add({ line1 = 1, line2 = 1, text = "x" })
+  nudge.send()
+  h.eq(1, #store.all(), "not cleared before delivery")
+  nudge.send()
+  h.truthy(h.notifications()[1].msg:find("still sending", 1, true))
+  h.deliver()
+  h.eq(1, #h.hc_sends(), "sent once")
+  h.eq(0, #store.all())
+end
+
+T["app: control characters are removed"] = function()
+  vim.env.HC_TERMINAL_ID = "t1"
+  h.fake_hc({ tb1 = { term("t1"), term("t2", "claude-code", "/") } })
+  h.file("a.lua", { "x\27[201~\3rm -rf ~\r" })
+  nudge.add({ line1 = 1, line2 = 1, text = "look" })
+  nudge.send()
+  local text = h.hc_sends()[1].text
+  h.eq(nil, text:find("[%z\1-\8\11-\31\127]"))
+  h.truthy(text:find("x[201~rm -rf ~", 1, true))
 end
 
 return T

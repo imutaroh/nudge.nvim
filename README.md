@@ -12,8 +12,10 @@ PR レビューでインラインコメントを書く感覚で、エージェ�
   コメントを入力している間も、対象の範囲はハイライトされたままです。
   コメントは extmark として行に付くので、送る前に上の行を編集しても位置がずれません。
 - **まとめて送る**（`:Nudge send`）。全コメントを「ファイル:行 + 該当コード + コメント」の Markdown にまとめ、
-  エージェントの入力欄へ bracketed paste で 1 つの貼り付けとして入れます。**Enter は押しません**。
-  内容を確認してから自分で送信してください（`submit = true` で自動送信）。
+  エージェントの入力欄へ 1 つの貼り付けとして入れます。
+  - Herdr デスクトップアプリでは `hc send` で送ります。貼り付けたあと **Enter まで押されます**（`hc` に貼り付けだけを行う手段がないため）。
+    相手の入力欄に書きかけの文があると、その文と一緒に送信されます。エージェントが権限の確認などで止まっているときは送らず、コメントを残します。
+  - herdr（TUI 版）では bracketed paste で入れ、**Enter は押しません**。内容を確認してから自分で送信してください（`submit = true` で自動送信）。
 - パスはエージェントのペインの作業ディレクトリからの相対パスにします。
 - 送り先は同じ herdr タブの `claude` ペインです。複数あるときは最初に選び、そのタブでは選んだペインを使い続けます
   （`:Nudge target` で選び直し）。
@@ -36,8 +38,10 @@ end
 ## 必要なもの
 
 - Neovim 0.10 以上
-- [herdr](https://herdr.dev)（Neovim を herdr のペインで起動していること。`$HERDR_PANE_ID` を使います）
-- 送り先のエージェントが herdr に認識されていること（`herdr pane list` の `agent` が `claude`）
+- [herdr](https://herdr.dev)。Neovim を herdr のペインで起動していること。次のどちらかで動きます
+  - Herdr デスクトップアプリ: `herdr-app` と `hc` が PATH にあること。`$HC_TERMINAL_ID` があるとこちらを使います
+  - herdr（TUI 版）: `herdr` が PATH にあること。`$HERDR_PANE_ID` を使います
+- 送り先のエージェントが herdr に認識されていること（`herdr-app ls` の `app` が `claude-code`、TUI 版では `herdr pane list` の `agent` が `claude`）
 
 ## インストール
 
@@ -79,9 +83,9 @@ Lua からは `require("nudge").add({ line1, line2, text })` などの同名関�
 
 ```lua
 require("nudge").setup({
-  agent = "claude",        -- 送り先（herdr の agent 名）。false ならエージェントなら何でも
+  agent = "claude",        -- 送り先（herdr の agent 名。アプリの claude-code にも一致）。false ならエージェントなら何でも
   header = "Review comments on the code below. Please address each one.", -- 先頭の 1 段落。"" で無し
-  submit = false,          -- 貼り付けたあと Enter も押す
+  submit = false,          -- TUI 版のみ: 貼り付けたあと Enter も押す（アプリでは常に押される）
   clear_on_send = true,    -- 送れたらコメントを消す
   sign = "▍",              -- 範囲の先頭行のサイン。false で無し
   virt_text_prefix = "  ✎ ",
@@ -108,7 +112,7 @@ require("nudge").setup({
 ## 開発
 
 ```sh
-make test   # nvim --headless でテストを実行（herdr は偽物に差し替え）
+make test   # nvim --headless でテストを実行（herdr と hc は偽物に差し替え）
 make lint   # stylua --check
 ```
 

@@ -1,9 +1,9 @@
 local M = {}
 
 ---@class nudge.Config
----@field agent string|false Agent name to send to, as herdr reports it (`.agent` in `herdr pane list`); false = any agent
+---@field agent string|false Agent to send to, as herdr reports it (`claude` also matches the app's `claude-code`); false = any agent
 ---@field header string|nil First paragraph of the message; nil or "" = none
----@field submit boolean Press Enter after pasting (false: leave the message in the agent's prompt to review)
+---@field submit boolean herdr TUI only: press Enter after pasting (false: leave the message in the agent's prompt to review). The Herdr app always submits
 ---@field clear_on_send boolean Remove the comments once they were sent successfully
 ---@field sign string|false Sign shown on the first line of a commented range; false = no sign
 ---@field virt_text_prefix string Prefix of the comment shown at the end of the first line

@@ -12,8 +12,12 @@ your agent.
   sign and a tinted background, and the comment shows at the end of the first line. While you type a comment, its range
   stays highlighted. Comments are extmarks, so they stay on their lines while you keep editing.
 - **Send them together** (`:Nudge send`): every comment becomes "file:line + code + comment" Markdown, pasted into the
-  agent's prompt as a single bracketed paste. **Enter is not pressed**: review it and submit it yourself
-  (or set `submit = true`).
+  agent's prompt as a single paste.
+  - In the Herdr desktop app it goes through `hc send`, which pastes and **presses Enter** (`hc` has no way to
+    paste without submitting). A draft already typed in the agent's prompt is submitted together with it. When
+    the agent is waiting on a permission prompt, nothing is sent and the comments are kept.
+  - In the herdr TUI it is a bracketed paste and **Enter is not pressed**: review it and submit it yourself
+    (or set `submit = true`).
 - Paths are relative to the agent pane's working directory.
 - The target is the `claude` pane in the same herdr tab. With several, you pick one the first time and it is
   remembered for that tab (`:Nudge target` to pick again).
@@ -22,8 +26,11 @@ your agent.
 ## Requirements
 
 - Neovim >= 0.10
-- [herdr](https://herdr.dev), with Neovim running in a herdr pane (`$HERDR_PANE_ID` is used)
-- The agent recognized by herdr (`agent` is `claude` in `herdr pane list`)
+- [herdr](https://herdr.dev), with Neovim running in a herdr pane. Either of:
+  - the Herdr desktop app: `herdr-app` and `hc` in `PATH`. Used when `$HC_TERMINAL_ID` is set
+  - the herdr TUI: `herdr` in `PATH`. `$HERDR_PANE_ID` is used
+- The agent recognized by herdr (`app` is `claude-code` in `herdr-app ls`; in the TUI, `agent` is `claude` in
+  `herdr pane list`)
 
 ## Installation
 
@@ -66,9 +73,9 @@ Defaults:
 
 ```lua
 require("nudge").setup({
-  agent = "claude",        -- target agent as named by herdr; false = any agent
+  agent = "claude",        -- target agent as named by herdr (also matches the app's claude-code); false = any agent
   header = "Review comments on the code below. Please address each one.", -- first paragraph; "" = none
-  submit = false,          -- also press Enter after pasting
+  submit = false,          -- TUI only: also press Enter after pasting (the app always does)
   clear_on_send = true,    -- remove the comments once sent
   sign = "▍",              -- sign on the first line of a range; false = none
   virt_text_prefix = "  ✎ ",
@@ -95,7 +102,7 @@ Highlight groups:
 ## Development
 
 ```sh
-make test   # headless tests (herdr is faked)
+make test   # headless tests (herdr and hc are faked)
 make lint   # stylua --check
 ```
 

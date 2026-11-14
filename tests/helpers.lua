@@ -1,4 +1,4 @@
--- Test helpers: scratch files under tests/.tmp/run, a fake herdr, fakes for vim.ui and vim.notify, assertions.
+-- Test helpers: scratch files under tests/.tmp/run, fakes for herdr and the Herdr app, fakes for vim.ui and vim.notify, assertions.
 local M = {}
 
 local uv = vim.uv or vim.loop
@@ -10,8 +10,10 @@ local real_select = vim.ui.select
 local real_input = vim.ui.input
 local real_notify = vim.notify
 local real_run = require("nudge.herdr").run
+local real_start = require("nudge.herdr").start
 local notes = {}
 local calls = {}
+local held = {}
 local counter = 0
 
 ---@param root string repository root of nudge.nvim
@@ -35,9 +37,12 @@ function M.reset()
   vim.ui.select = real_select
   vim.ui.input = real_input
   require("nudge.herdr").run = real_run
+  require("nudge.herdr").start = real_start
   vim.env.HERDR_PANE_ID = nil
+  vim.env.HC_TERMINAL_ID = nil
   notes = {}
   calls = {}
+  held = {}
   vim.notify = function(msg, level)
     notes[#notes + 1] = { msg = tostring(msg), level = level or vim.log.levels.INFO }
   end
@@ -65,12 +70,12 @@ function M.file(name, lines, dir)
   return vim.api.nvim_get_current_buf(), path
 end
 
----Replace herdr with a fake. `panes` is what `herdr pane list` reports; every call is recorded.
+---Replace the herdr TUI with a fake. `panes` is what `herdr pane list` reports; every call is recorded.
 ---@param panes table[]
 ---@param fail? table<string, boolean> subcommands ("send-text", "send-keys", "list") that should fail
 function M.fake_herdr(panes, fail)
   fail = fail or {}
-  require("nudge.herdr").run = function(args)
+  local function run(args)
     calls[#calls + 1] = args
     local sub = args[3]
     if fail[sub] then
@@ -81,6 +86,73 @@ function M.fake_herdr(panes, fail)
     end
     return { code = 0, stdout = "{}", stderr = "" }
   end
+  require("nudge.herdr").run = run
+  require("nudge.herdr").start = function(args, cb)
+    cb(run(args))
+  end
+end
+
+---Replace the Herdr app (`herdr-app ls`, `hc get`, `hc send`) with a fake; every call is recorded.
+---@param tabs table<string, table[]> tab id -> terminals ({ terminal, app, cwd, title })
+---@param opts? { send_code: integer, hold: boolean } exit code of `hc send`; hold = deliver on `M.deliver()`
+function M.fake_hc(tabs, opts)
+  opts = opts or {}
+  local by_address = {}
+  local listed = {}
+  for id, terminals in pairs(tabs) do
+    local row = { id = id, terminals = {} }
+    for _, t in ipairs(terminals) do
+      by_address[t.terminal] = t
+      row.terminals[#row.terminals + 1] = { terminal = t.terminal, app = t.app or vim.NIL, pane = "p-" .. t.terminal }
+    end
+    listed[#listed + 1] = row
+  end
+  local function run(args)
+    calls[#calls + 1] = args
+    if args[1] == "herdr-app" and args[2] == "ls" then
+      return { code = 0, stdout = vim.json.encode({ spaces = { { id = "sp1", tabs = listed } } }), stderr = "" }
+    end
+    if args[1] == "hc" and args[2] == "get" then
+      local t = by_address[args[3]]
+      -- The terminal's own cwd is where its shell started, not where the agent runs.
+      local got = { address = t.terminal, cwd = "/shell/started/here", title = t.title, foreground = { cwd = t.cwd } }
+      return { code = 0, stdout = vim.json.encode(got), stderr = "" }
+    end
+    local code = opts.send_code or 0
+    return { code = code, stdout = "{}", stderr = code == 0 and "" or "send broke" }
+  end
+  require("nudge.herdr").run = run
+  require("nudge.herdr").start = function(args, cb)
+    if opts.hold then
+      held[#held + 1] = function()
+        cb(run(args))
+      end
+    else
+      cb(run(args))
+    end
+  end
+end
+
+---Finish the `hc send` calls that `fake_hc({ hold = true })` is holding.
+function M.deliver()
+  local pending = held
+  held = {}
+  for _, fn in ipairs(pending) do
+    fn()
+  end
+end
+
+---`hc send` calls: { terminal, text } each.
+---@return { terminal: string, text: string, args: string[] }[]
+function M.hc_sends()
+  local out = {}
+  for _, c in ipairs(calls) do
+    local i = vim.fn.index(c, "send")
+    if i >= 0 and c[i] == "hc" then
+      out[#out + 1] = { terminal = c[#c - 1], text = c[#c], args = c }
+    end
+  end
+  return out
 end
 
 ---@return string[][]

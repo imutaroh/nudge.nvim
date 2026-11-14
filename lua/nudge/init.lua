@@ -210,7 +210,9 @@ function M._entries(cwd)
   return entries, sent, stale, modified
 end
 
----Paste every comment into the agent pane of this herdr tab.
+local sending = false
+
+---Send every comment to the agent pane of this herdr tab.
 ---@param opts? { ask: boolean } ask which pane even when one was chosen before
 function M.send(opts)
   opts = opts or {}
@@ -218,29 +220,35 @@ function M.send(opts)
   if M.count() == 0 then
     return notify("no comments to send")
   end
+  if sending then
+    return notify("still sending the previous comments", vim.log.levels.WARN)
+  end
   herdr.target({ agent = cfg.agent, ask = opts.ask }, function(pane, err)
     if not pane then
       return notify(err or "no target pane", vim.log.levels.WARN)
     end
     local entries, sent, stale, modified = M._entries(pane.cwd)
-    local ok, perr = herdr.paste(pane.pane_id, payload.build(entries, cfg.header), cfg.submit)
-    if not ok then
-      return notify(perr or "send failed", vim.log.levels.ERROR)
-    end
-    if cfg.clear_on_send then
-      for _, it in ipairs(vim.list_extend(sent, stale)) do
-        store.remove(it)
+    sending = true
+    herdr.paste(pane.pane_id, payload.build(entries, cfg.header), cfg.submit, function(ok, perr)
+      sending = false
+      if not ok then
+        return notify(perr or "send failed", vim.log.levels.ERROR)
       end
-    end
-    notify(("sent %d comment(s) to %s"):format(#entries, pane.title or pane.pane_id))
-    if #modified > 0 then
-      notify(
-        "unsaved changes in "
-          .. table.concat(modified, ", ")
-          .. ": the agent reads the file on disk, so line numbers may not match",
-        vim.log.levels.WARN
-      )
-    end
+      if cfg.clear_on_send then
+        for _, it in ipairs(vim.list_extend(sent, stale)) do
+          store.remove(it)
+        end
+      end
+      notify(("sent %d comment(s) to %s"):format(#entries, pane.title or pane.pane_id))
+      if #modified > 0 then
+        notify(
+          "unsaved changes in "
+            .. table.concat(modified, ", ")
+            .. ": the agent reads the file on disk, so line numbers may not match",
+          vim.log.levels.WARN
+        )
+      end
+    end)
   end)
 end
 
