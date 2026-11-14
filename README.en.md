@@ -14,8 +14,9 @@ your agent.
 - **Send them together** (`:Nudge send`): every comment becomes "file:line + code + comment" Markdown, pasted into the
   agent's prompt as a single paste.
   - In the Herdr desktop app it goes through `hc send`, which pastes and **presses Enter** (`hc` has no way to
-    paste without submitting). A draft already typed in the agent's prompt is submitted together with it. When
-    the agent is waiting on a permission prompt, nothing is sent and the comments are kept.
+    paste without submitting). When a draft is being typed in the agent's prompt, `hc` waits up to 60 seconds
+    since the last key; a draft still there is then submitted together with it. When the agent is waiting on a
+    permission prompt, nothing is sent and the comments are kept.
   - In the herdr TUI it is a bracketed paste and **Enter is not pressed**: review it and submit it yourself
     (or set `submit = true`).
 - Paths are relative to the agent pane's working directory.

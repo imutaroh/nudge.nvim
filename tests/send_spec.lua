@@ -247,6 +247,18 @@ T["app: a failed send keeps the comments"] = function()
   h.truthy(h.notifications()[1].msg:find("send broke", 1, true))
 end
 
+T["app: a JSON error from hc is shown as its message"] = function()
+  vim.env.HC_TERMINAL_ID = "t1"
+  h.fake_hc({ tb1 = { term("t1"), term("t2", "claude-code", "/") } })
+  herdr.start = function(_, cb)
+    cb({ code = 3, stdout = "", stderr = '{"error":{"kind":"not_found","message":"no terminal \\"t2\\""}}\n' })
+  end
+  h.file("a.lua", { "a" })
+  nudge.add({ line1 = 1, line2 = 1, text = "x" })
+  nudge.send()
+  h.eq('nudge: hc send failed: no terminal "t2"', h.notifications()[1].msg)
+end
+
 T["app: comments stay until hc send returns, and a second send waits"] = function()
   vim.env.HC_TERMINAL_ID = "t1"
   h.fake_hc({ tb1 = { term("t1"), term("t2", "claude-code", "/") } }, { hold = true })

@@ -69,17 +69,24 @@ function M.backend()
   return nil
 end
 
----@param res { code: integer, stdout: string, stderr: string }
----@return string
-local function output(res)
-  return vim.trim(res.stderr ~= "" and res.stderr or res.stdout)
-end
-
 ---@param s string
 ---@return table|nil
 local function decode(s)
   local ok, decoded = pcall(vim.json.decode, s, { luanil = { object = true, array = true } })
   return (ok and type(decoded) == "table") and decoded or nil
+end
+
+---What a failed command said. hc and herdr report errors as JSON: `{"error":{"message":"..."}}`.
+---@param res { code: integer, stdout: string, stderr: string }
+---@return string
+local function output(res)
+  local text = vim.trim(res.stderr ~= "" and res.stderr or res.stdout)
+  local decoded = decode(text)
+  local err = decoded and decoded.error
+  if type(err) == "table" and type(err.message) == "string" then
+    return err.message
+  end
+  return text
 end
 
 ---The app reports Claude Code as `claude-code`; the TUI as `claude`. `agent = "claude"` matches both.
@@ -256,8 +263,8 @@ end
 ---@param text string
 ---@param cb fun(ok: boolean, err: string|nil)
 local function paste_hc(terminal, text, cb)
-  -- Without $HC_TERMINAL_ID the message is not attributed to this terminal. Attributed messages reach an
-  -- agent as `<hc from="t7">` reports from a helper, not as the person's own words.
+  -- Messages attributed to a terminal reach an agent as `<hc from="t7">` reports from a helper, not as the
+  -- person's own words. Dropping $HC_TERMINAL_ID is meant to keep this one unattributed.
   M.start({ "env", "-u", "HC_TERMINAL_ID", "hc", "send", "--", terminal, text }, function(res)
     if res.code == 0 then
       return cb(true)
