@@ -12,18 +12,23 @@ function M.check()
     health.error("Neovim >= 0.10 required, found " .. vstr)
   end
 
-  if vim.fn.executable("herdr") ~= 1 then
-    health.error("herdr not found in PATH")
+  local herdr = require("nudge.herdr")
+  local backend = herdr.backend()
+  if not backend then
+    health.warn("neither $HC_TERMINAL_ID nor $HERDR_PANE_ID is set: start Neovim inside a herdr pane to send comments")
     return
   end
-  health.ok("herdr found")
+  local needed = backend == "hc" and { "herdr-app", "hc" } or { "herdr" }
+  for _, exe in ipairs(needed) do
+    if vim.fn.executable(exe) ~= 1 then
+      health.error(exe .. " not found in PATH")
+      return
+    end
+  end
+  health.ok(("%s (%s found)"):format(backend == "hc" and "Herdr app" or "herdr TUI", table.concat(needed, ", ")))
 
-  if not vim.env.HERDR_PANE_ID or vim.env.HERDR_PANE_ID == "" then
-    health.warn("$HERDR_PANE_ID is not set: start Neovim inside a herdr pane to send comments")
-    return
-  end
   local agent = require("nudge.config").options.agent
-  local cands, _, err = require("nudge.herdr").candidates(agent)
+  local cands, _, err = herdr.candidates(agent)
   if not cands then
     health.warn(err or "could not list herdr panes")
   elseif #cands == 0 then
